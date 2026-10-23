@@ -1,0 +1,28 @@
+# Real servers for the preview: shop on PostgreSQL, analytics on MySQL, billing stays SQLite.
+#   docker compose up -d --wait
+#   export SHOP_DB_URL=postgresql://shop:shop@127.0.0.1:55452/shop
+#   export ANALYTICS_DB_URL=mysql://root:shop@127.0.0.1:55453/analytics
+#   python walkthrough.py
+#   docker compose down -v      # wipe the servers' data
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: shop
+      POSTGRES_DB: postgres        # "shop" itself is created by create_if_missing
+    ports: ["127.0.0.1:55452:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "shop"]
+      interval: 2s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: shop    # "analytics" is created by create_if_missing
+    ports: ["127.0.0.1:55453:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "-h", "127.0.0.1", "-pshop", "ping"]  # TCP: skips the init server
+      interval: 2s
+      retries: 60

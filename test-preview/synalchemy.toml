@@ -1,0 +1,25 @@
+# A small online shop that keeps its data in three databases.
+# With no environment variables set, all three are SQLite files in ./data/.
+# `docker compose up -d` + the exports in README.md switch shop to PostgreSQL
+# and analytics to MySQL, while billing stays on SQLite.
+
+models = ["shop.models"]
+migrations_dir = "migrations"
+
+[engine_defaults]                 # every database, unless it overrides
+pool = "queue"
+pool_size = 5
+max_overflow = 5
+
+[databases.default]               # customers, products, orders
+url = "${SHOP_DB_URL:-sqlite:///./data/shop.db}"
+create_if_missing = true
+
+[databases.analytics]             # click-stream events, written a lot, read rarely
+url = "${ANALYTICS_DB_URL:-sqlite:///./data/analytics.db}"
+create_if_missing = true
+pool = "null"                     # pretend it sits behind an external pooler
+
+[databases.billing]               # payments, kept apart for compliance
+url = "${BILLING_DB_URL:-sqlite:///./data/billing.db}"
+create_if_missing = true

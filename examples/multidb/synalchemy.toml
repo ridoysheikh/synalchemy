@@ -1,0 +1,7 @@
+# Run from this folder:
+#   migrations make "initial" && migrate && python main.py
+models = ["models"]
+
+[databases]
+default = "${DATABASE_URL:-sqlite:///./main.db}"
+analytics = "${ANALYTICS_URL:-sqlite:///./analytics.db}"

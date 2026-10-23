@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "synalchemy"
+dynamic = ["version"]
+description = "Async multi-database toolkit for SQLAlchemy 2.x: automatic engines, per-model database routing, and timestamp-chained async migrations with ENUM sync."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+requires-python = ">=3.10"
+authors = [{ name = "ridoysheikh", email = "ridoysheikh778@gmail.com" }]
+keywords = ["sqlalchemy", "alembic", "asyncio", "migrations", "multi-database", "orm", "postgresql", "enum"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+    "Typing :: Typed",
+]
+dependencies = [
+    "sqlalchemy[asyncio]>=2.0.30",
+    "alembic>=1.13",
+    "typer>=0.13",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+postgres = ["asyncpg>=0.29"]
+postgres-sync = ["psycopg[binary]>=3.1"]
+sqlite = ["aiosqlite>=0.20"]
+mysql = ["aiomysql>=0.2", "sqlalchemy>=2.0.50"]  # older SQLAlchemy breaks pool_pre_ping with current aiomysql
+mssql = ["aioodbc>=0.5"]
+oracle = ["oracledb>=2.0"]
+
+[project.scripts]
+synalchemy = "synalchemy.cli:app"
+migrations = "synalchemy.cli:migrations_app"
+migrate = "synalchemy.cli:migrate_app"
+
+[project.urls]
+Homepage = "https://github.com/ridoysheikh/synalchemy"
+Source = "https://github.com/ridoysheikh/synalchemy"
+Issues = "https://github.com/ridoysheikh/synalchemy/issues"
+Changelog = "https://github.com/ridoysheikh/synalchemy/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "aiosqlite>=0.20",
+    "asyncpg>=0.29",
+    "psycopg[binary]>=3.1",
+    "aiomysql>=0.2",
+    "oracledb>=2.0",
+    "ruff>=0.6",
+]
+
+[tool.hatch.version]
+path = "src/synalchemy/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "examples", "README.md", "CHANGELOG.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synalchemy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = ["postgres: needs SYNALCHEMY_TEST_PG_URL pointing at a PostgreSQL server"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF012"]

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+
+  test:
+    name: test (py${{ matrix.python }}, sqlite + postgres)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: test, POSTGRES_PASSWORD: test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U test" --health-interval 5s --health-retries 20
+    env:
+      SYNALCHEMY_TEST_PG_URL: postgresql://test:test@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync
+      - run: uv run pytest -q
+
+  dialects:
+    name: dialects (mysql, mariadb, mssql, oracle)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env: { MYSQL_ROOT_PASSWORD: test }
+        ports: ["3306:3306"]
+        options: --health-cmd "mysqladmin -ptest ping" --health-interval 5s --health-retries 30
+      mariadb:
+        image: mariadb:11.4
+        env: { MARIADB_ROOT_PASSWORD: test }
+        ports: ["3307:3306"]
+        options: --health-cmd "healthcheck.sh --connect" --health-interval 5s --health-retries 30
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env: { ACCEPT_EULA: "Y", MSSQL_SA_PASSWORD: "Synalchemy-Test1" }
+        ports: ["1433:1433"]
+      oracle:
+        image: gvenzl/oracle-free:23-slim-faststart
+        env: { ORACLE_PASSWORD: test, APP_USER: syn, APP_USER_PASSWORD: test }
+        ports: ["1521:1521"]
+        options: --health-cmd healthcheck.sh --health-interval 10s --health-retries 30
+    env:
+      SYNALCHEMY_TEST_MYSQL_URL: mysql://root:test@127.0.0.1:3306/mysql
+      SYNALCHEMY_TEST_MARIADB_URL: mariadb://root:test@127.0.0.1:3307/mysql
+      SYNALCHEMY_TEST_MSSQL_URL: mssql+aioodbc://sa:Synalchemy-Test1@127.0.0.1:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+      SYNALCHEMY_TEST_ORACLE_URL: oracle://syn:test@127.0.0.1:1521/?service_name=FREEPDB1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the SQL Server ODBC driver
+        run: |
+          if ! odbcinst -q -d | grep -q "ODBC Driver 18"; then
+            curl -sSL -O https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb
+            sudo dpkg -i packages-microsoft-prod.deb
+            sudo apt-get update
+            sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc
+          fi
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --extra mssql
+      - name: Wait for SQL Server
+        run: |
+          for i in $(seq 1 60); do
+            uv run python -c "import pyodbc; pyodbc.connect('DRIVER={ODBC Driver 18 for SQL Server};SERVER=127.0.0.1;UID=sa;PWD=Synalchemy-Test1;TrustServerCertificate=yes', timeout=2)" && exit 0
+            sleep 2
+          done
+          exit 1
+      - run: uv run pytest -q tests/test_dialects.py
