@@ -5,9 +5,12 @@ Pool kinds (``pool = "..."`` per database or in ``engine_defaults``):
 ========== ============================== =============================================
 kind       pool class                     use it for
 ========== ============================== =============================================
-``auto``   dialect default                most apps (default)
+``auto``   dialect default; NullPool on   most apps (default)
+           serverless platforms
 ``queue``  QueuePool / AsyncAdaptedQueue  long-running servers; tune ``pool_size`` etc.
-``null``   NullPool                       CLIs, serverless, external poolers (PgBouncer)
+``null``   NullPool                       CLIs, scripts, serverless
+``external`` NullPool, no prepared-       behind a transaction pooler (PgBouncer,
+           statement cache                Supabase / Neon poolers, RDS Proxy)
 ``static`` StaticPool                     one shared connection (in-memory SQLite, tests)
 ``single`` SingletonThreadPool (sync)     one connection per thread
 ========== ============================== =============================================
@@ -19,6 +22,7 @@ pools that don't accept them, so switching ``pool`` never breaks the config.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -38,7 +42,25 @@ from synalchemy.exceptions import ConfigError
 if TYPE_CHECKING:
     from synalchemy.config import DatabaseConfig
 
-POOL_KINDS = ("auto", "queue", "null", "static", "single")
+POOL_KINDS = ("auto", "queue", "null", "external", "static", "single")
+
+# Set by serverless platforms, where an instance may freeze between requests: a pool's
+# idle connections would go stale, so ``auto`` opens one connection per checkout instead.
+SERVERLESS_ENV = (
+    "AWS_LAMBDA_FUNCTION_NAME",  # AWS Lambda
+    "VERCEL",  # Vercel functions
+    "NETLIFY",  # Netlify functions
+    "FUNCTION_TARGET",  # Google Cloud Functions
+    "FUNCTIONS_WORKER_RUNTIME",  # Azure Functions
+)
+
+# A transaction pooler hands each transaction a different server connection, so the
+# driver must not keep prepared statements between them.
+_NO_PREPARED_STATEMENTS = {
+    "asyncpg": {"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+    "psycopg": {"prepare_threshold": None},
+    "psycopg_async": {"prepare_threshold": None},
+}
 
 # Options only QueuePool-style pools accept.
 _QUEUE_ONLY = {"pool_size", "max_overflow", "pool_timeout", "pool_use_lifo"}
@@ -51,6 +73,11 @@ _SYNC_DRIVERS = {
     "aioodbc": "pyodbc",
     "psycopg_async": "psycopg",
 }
+
+
+def is_serverless() -> bool:
+    """``True`` on a serverless platform (see ``SERVERLESS_ENV``)."""
+    return any(os.environ.get(name) for name in SERVERLESS_ENV)
 
 
 def is_memory_sqlite(url: str) -> bool:
@@ -76,10 +103,11 @@ def to_sync_url(url: str) -> str:
 
 
 def engine_options(
-    db: DatabaseConfig, *, is_async: bool, pool: str | None = None
+    db: DatabaseConfig, *, is_async: bool, pool: str | None = None, url: str | None = None
 ) -> dict[str, Any]:
     """Keyword arguments for ``create_engine``/``create_async_engine``."""
-    backend = db.backend
+    url = url or db.url
+    backend = make_url(url).get_backend_name()
     options: dict[str, Any] = {}
     if backend != "sqlite":
         options["pool_pre_ping"] = True  # drop dead connections instead of failing a request
@@ -88,10 +116,18 @@ def engine_options(
     options.update(db.engine_options)
 
     kind = pool or db.pool or "auto"
-    if kind == "auto" and is_memory_sqlite(db.url):
+    if kind == "auto" and is_memory_sqlite(url):
         kind = "static"  # every connection must see the same in-memory database
+    if kind == "auto" and is_serverless():
+        kind = "null"
     if kind == "auto":
         return options
+    if kind == "external":
+        driver = make_url(url).drivername.partition("+")[2]
+        settings = _NO_PREPARED_STATEMENTS.get(driver)
+        if settings:
+            options["connect_args"] = {**settings, **options.get("connect_args", {})}
+        kind = "null"
     if kind == "queue":
         options["poolclass"] = AsyncAdaptedQueuePool if is_async else QueuePool
         return options
@@ -114,9 +150,26 @@ def build_async_engine(db: DatabaseConfig, *, pool: str | None = None) -> AsyncE
     return create_async_engine(db.url, **engine_options(db, is_async=True, pool=pool))
 
 
+def build_migration_engine(db: DatabaseConfig) -> AsyncEngine:
+    """Unpooled engine for migrations, on ``migration_url`` when set.
+
+    Without a ``migration_url``, a database behind a transaction pooler keeps the
+    ``external`` driver settings. Note that ``migrate``'s lock is held for the whole
+    session, so a transaction pooler can't guarantee it: prefer a direct ``migration_url``.
+    """
+    if db.migration_url:
+        url = db.migration_url
+        options = engine_options(db, is_async=True, pool="null", url=url)
+    else:
+        url = db.url
+        pool = "external" if db.pool == "external" else "null"
+        options = engine_options(db, is_async=True, pool=pool)
+    return create_async_engine(url, **options)
+
+
 def build_sync_engine(db: DatabaseConfig, *, pool: str | None = None) -> Engine:
     url = db.sync_url or to_sync_url(db.url)
-    options = engine_options(db, is_async=False, pool=pool)
+    options = engine_options(db, is_async=False, pool=pool, url=url)
     if is_memory_sqlite(url):
         options.setdefault("connect_args", {}).setdefault("check_same_thread", False)
     return create_engine(url, **options)

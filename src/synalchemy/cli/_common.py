@@ -14,7 +14,8 @@ import typer
 from sqlalchemy.exc import SQLAlchemyError
 
 from synalchemy.config import Config
-from synalchemy.core import SynAlchemy
+from synalchemy.core import SynAlchemy, import_string
+from synalchemy.default import db as default_db
 from synalchemy.exceptions import ConfigError, SynAlchemyError
 
 T = TypeVar("T")
@@ -34,14 +35,6 @@ DbOption = Annotated[
 ]
 
 
-def import_string(path: str) -> Any:
-    module_name, _, attr = path.partition(":")
-    obj: Any = importlib.import_module(module_name)
-    for part in filter(None, attr.split(".")):
-        obj = getattr(obj, part)
-    return obj
-
-
 def load_app(config_path: Path | None) -> SynAlchemy:
     """Build the SynAlchemy instance the CLI works on and import the models."""
     config = Config.load(config_path)
@@ -54,11 +47,11 @@ def load_app(config_path: Path | None) -> SynAlchemy:
             raise ConfigError(f"'app' = {config.app!r} is not a SynAlchemy instance.")
         for module in app.config.models:
             importlib.import_module(module)
-        return app
+        return default_db.use(app)
     for module in config.models:
         importlib.import_module(module)
-    metadata = import_string(config.metadata) if config.metadata else None
-    return SynAlchemy(config=config, metadata=metadata)
+    # the same instance as `synalchemy.db`, for code that revisions run
+    return default_db.use(SynAlchemy(config=config))
 
 
 def select_databases(app: SynAlchemy, names: list[str] | None) -> list[str]:

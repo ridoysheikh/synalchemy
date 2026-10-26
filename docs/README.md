@@ -22,7 +22,9 @@ Each page answers one question and stays short. Find what you want to do below a
 | put a model in a non-default database | [Databases and routing](guides/databases-and-routing.md) |
 | query from async code, sync code or raw SQL | [Databases and routing › Sessions](guides/databases-and-routing.md#sessions) |
 | understand why a JOIN across databases is refused | [Databases and routing › Across databases](guides/databases-and-routing.md#across-databases) |
+| read settings from a `.env` file | [Configuration › A `.env` file](guides/configuration.md#a-env-file) |
 | choose a connection pool, or use sync engines | [Engines and pools](guides/engines-and-pools.md) |
+| run behind PgBouncer or on serverless | [Engines and pools › Choose a pool](guides/engines-and-pools.md#choose-a-pool) |
 | wire it into FastAPI or another framework | [Engines and pools › App lifecycle](guides/engines-and-pools.md#app-lifecycle) |
 
 ### Change the schema

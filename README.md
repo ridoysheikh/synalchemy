@@ -3,7 +3,8 @@
 Async multi-database toolkit for **SQLAlchemy 2.x**.
 
 - **Several databases, one model base.** `__db_name__ = "analytics"` puts a model in that database.
-- **Engines and pools handled for you.** Async, sync and migration engines are created on first use, with the pool you choose.
+- **Engines and pools handled for you.** Async, sync and migration engines are created on first use, with the pool you choose: pooled for servers, unpooled for serverless (detected), or `external` behind PgBouncer.
+- **Nothing to wire up.** `from synalchemy import db` is the instance your `synalchemy.toml` describes, read on first use (with your `.env`).
 - **One session for all of them.** Every query goes to the right database.
 - **Async migrations per database.** Timestamped, strictly linear revision files, with `migrations` to write them and `migrate` to apply them.
 - **ENUM changes migrated on every dialect.**
@@ -20,7 +21,7 @@ pip install "synalchemy[postgres]"      # or sqlite, mysql, mssql, oracle
 Until it's on PyPI, install from a [GitHub release](https://github.com/ridoysheikh/synalchemy/releases):
 
 ```bash
-pip install "synalchemy[postgres] @ https://github.com/ridoysheikh/synalchemy/releases/download/v0.1.0/synalchemy-0.1.0-py3-none-any.whl"
+pip install "synalchemy[postgres] @ https://github.com/ridoysheikh/synalchemy/releases/download/v0.2.0/synalchemy-0.2.0-py3-none-any.whl"
 ```
 
 ## In five minutes
@@ -55,9 +56,8 @@ migrate                            # apply to every database
 ```
 
 ```python
-from synalchemy import SynAlchemy
+from synalchemy import db                  # built from synalchemy.toml on first use
 
-db = SynAlchemy.from_config()
 async with db.session() as session:
     session.add_all([User(), Event()])     # two databases, one session
     await session.commit()

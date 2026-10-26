@@ -7,7 +7,8 @@ Sources, later ones overriding earlier ones:
 2. environment variables (``SYNALCHEMY_DB_<NAME>_URL``, ``SYNALCHEMY_MODELS``, ...)
 3. keyword overrides passed to :meth:`Config.load`
 
-String values read from files support ``${VAR}`` and ``${VAR:-fallback}``.
+String values read from files support ``${VAR}`` and ``${VAR:-fallback}``. With
+``env_file = ".env"``, variables are also read from that file (the real environment wins).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ _ASYNC_DRIVERS = {
 
 _CONFIG_KEYS = {
     "databases",
+    "env_file",
     "models",
     "app",
     "metadata",
@@ -55,6 +57,31 @@ _CONFIG_KEYS = {
     "exclude_tables",
     "engine_defaults",
 }
+
+
+# Engine options that environment variables can set; their text is converted to the type.
+_INT_OPTIONS = {"pool_size", "max_overflow", "pool_timeout", "pool_recycle"}
+_BOOL_OPTIONS = {"echo", "echo_pool", "pool_pre_ping", "pool_use_lifo", "create_if_missing"}
+_TRUE, _FALSE = {"1", "true", "yes", "on"}, {"0", "false", "no", "off", ""}
+
+
+def _coerce(key: str, value: Any, where: str) -> Any:
+    """Turn ``"5"`` / ``"true"`` from an environment variable into ``5`` / ``True``."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip().lower()
+    if key in _INT_OPTIONS:
+        try:
+            return int(text)
+        except ValueError:
+            raise ConfigError(f"{where}: {key} must be a whole number, got {value!r}.") from None
+    if key in _BOOL_OPTIONS:
+        if text in _TRUE:
+            return True
+        if text in _FALSE:
+            return False
+        raise ConfigError(f"{where}: {key} must be true or false, got {value!r}.")
+    return value
 
 
 def to_async_url(url: str) -> str:
@@ -79,6 +106,7 @@ class DatabaseConfig:
     name: str
     url: str
     sync_url: str | None = None
+    migration_url: str | None = None
     pool: str | None = None
     create_if_missing: bool = False
     engine_options: dict[str, Any] = field(default_factory=dict)
@@ -90,6 +118,14 @@ class DatabaseConfig:
                 "underscores, starting with a letter."
             )
         self.url = to_async_url(self.url)
+        # An empty value (an unset ``${VAR:-}``) means "not set".
+        self.sync_url = self.sync_url or None
+        self.migration_url = to_async_url(self.migration_url) if self.migration_url else None
+        self.pool = (self.pool or "").strip().lower() or None
+        self.create_if_missing = _coerce("create_if_missing", self.create_if_missing, self.name)
+        self.engine_options = {
+            key: _coerce(key, value, self.name) for key, value in self.engine_options.items()
+        }
         _check_pool(self.pool, self.name)
 
     def __repr__(self) -> str:
@@ -113,8 +149,10 @@ class DatabaseConfig:
             if not url:
                 raise ConfigError(f"Database {name!r} has no 'url'.")
             engine_options = dict(options.pop("engine_options", {}))
-            known = {k: options.pop(k) for k in ("sync_url", "pool") if k in options}
-            create = bool(options.pop("create_if_missing", False))
+            known = {
+                k: options.pop(k) for k in ("sync_url", "migration_url", "pool") if k in options
+            }
+            create = options.pop("create_if_missing", False)
             engine_options.update(options)  # any other key goes to the engine
             return cls(
                 name=name,
@@ -132,6 +170,7 @@ class Config:
 
     databases: dict[str, DatabaseConfig]
     models: list[str] = field(default_factory=list)
+    env_file: str | None = None
     app: str | None = None
     metadata: str | None = None
     migrations_dir: Path = Path("migrations")
@@ -149,8 +188,11 @@ class Config:
                 f"A {DEFAULT_DB!r} database is required. Set it in the config file, "
                 f"SYNALCHEMY_DB_DEFAULT_URL or DATABASE_URL."
             )
-        defaults = dict(self.engine_defaults)
-        default_pool = defaults.pop("pool", None)
+        defaults = {
+            key: _coerce(key, value, "engine_defaults")
+            for key, value in self.engine_defaults.items()
+        }
+        default_pool = (defaults.pop("pool", None) or "").strip().lower() or None
         _check_pool(default_pool, "engine_defaults")
         for db in self.databases.values():
             db.engine_options = {**defaults, **db.engine_options}
@@ -158,6 +200,14 @@ class Config:
                 db.pool = default_pool
         self.migrations_dir = Path(self.migrations_dir)
         self.root = Path(self.root)
+        # A relative SQLite file is relative to the config file, like `migrations_dir`,
+        # so the app and the CLIs find it from any folder.
+        for db in self.databases.values():
+            db.url = _anchor_sqlite(db.url, self.root)
+            if db.sync_url:
+                db.sync_url = _anchor_sqlite(db.sync_url, self.root)
+            if db.migration_url:
+                db.migration_url = _anchor_sqlite(db.migration_url, self.root)
 
     @property
     def migrations_path(self) -> Path:
@@ -206,6 +256,9 @@ class Config:
         """Load config from file, environment and ``overrides``."""
         env = os.environ if env is None else env
         file_data, root = _read_file(path, env)
+        env_file = file_data.get("env_file")
+        if env_file:
+            env = {**read_env_file(root / _interpolate(env_file, env)), **env}
         data = _interpolate(file_data, env)
         data["databases"] = dict(data.get("databases") or {})
 
@@ -235,6 +288,16 @@ class Config:
         return cls.from_mapping(data, root=root)
 
 
+def _anchor_sqlite(url: str, root: Path) -> str:
+    parsed = make_url(url)
+    name = parsed.database
+    if parsed.get_backend_name() != "sqlite" or not name or name == ":memory:":
+        return url
+    if name.startswith("file:") or Path(name).is_absolute():
+        return url
+    return parsed.set(database=str(root / name)).render_as_string(hide_password=False)
+
+
 def _check_pool(pool: str | None, where: str) -> None:
     from synalchemy.engines import POOL_KINDS
 
@@ -243,18 +306,49 @@ def _check_pool(pool: str | None, where: str) -> None:
 
 
 def find_config_file(env: Mapping[str, str] | None = None) -> Path | None:
-    """Return the config file that :meth:`Config.load` would read, if any."""
+    """Return the config file that :meth:`Config.load` would read, if any.
+
+    Looks in the current folder, then each parent, for ``synalchemy.toml`` or a
+    ``pyproject.toml`` with a ``[tool.synalchemy]`` table.
+    """
     env = os.environ if env is None else env
     if env.get("SYNALCHEMY_CONFIG"):
         return Path(env["SYNALCHEMY_CONFIG"])
-    cwd = Path.cwd()
-    candidate = cwd / "synalchemy.toml"
-    if candidate.is_file():
-        return candidate
-    candidate = cwd / "pyproject.toml"
-    if candidate.is_file() and _section(candidate, explicit=False) is not None:
-        return candidate
+    for folder in (Path.cwd(), *Path.cwd().parents):
+        candidate = folder / "synalchemy.toml"
+        if candidate.is_file():
+            return candidate
+        candidate = folder / "pyproject.toml"
+        if candidate.is_file() and _section(candidate, explicit=False) is not None:
+            return candidate
     return None
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    """``KEY=value`` lines of a ``.env`` file. A missing file reads as empty.
+
+    Blank lines and ``#`` comments are skipped, ``export`` is allowed, and matching
+    quotes around a value are removed.
+    """
+    if not path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for raw in path.read_text("utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if not sep or not key:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+        values[key] = value
+    return values
 
 
 def _read_file(
@@ -290,10 +384,11 @@ def _interpolate(value: Any, env: Mapping[str, str]) -> Any:
 
         def replace(match: re.Match[str]) -> str:
             var, default = match["var"], match["default"]
-            if var in env:
-                return env[var]
+            value = env.get(var)
             if default is not None:
-                return default
+                return value or default  # like the shell: unset or empty -> fallback
+            if value is not None:
+                return value
             raise ConfigError(f"Environment variable {var!r} is not set (used in config).")
 
         return _INTERPOLATION_RE.sub(replace, value)

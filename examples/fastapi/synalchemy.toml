@@ -1,0 +1,20 @@
+# One file for the app and the CLIs. Run from this folder (or any subfolder):
+#   migrations make "initial" && migrate && uvicorn main:app
+models = ["models"]
+env_file = ".env"                     # optional; the real environment wins
+
+[databases.default]
+url = "${DATABASE_URL:-sqlite:///./app.db}"
+# Migrations skip the pooler when there is one; empty = use `url`.
+migration_url = "${DATABASE_DIRECT_URL:-}"
+create_if_missing = true
+
+# auto      the driver's pool; unpooled on serverless (Lambda, Vercel, ...)
+# queue     a long-running server keeping connections open
+# null      a connection per checkout (scripts, cron jobs)
+# external  behind PgBouncer / Supabase / Neon / RDS Proxy (transaction pooling)
+pool = "${DB_POOL:-auto}"
+pool_size = "${DB_POOL_SIZE:-5}"      # queue only; dropped for the others
+max_overflow = "${DB_MAX_OVERFLOW:-5}"
+pool_recycle = "${DB_POOL_RECYCLE:-1800}"
+echo = "${SQL_ECHO:-false}"

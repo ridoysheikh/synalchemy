@@ -47,10 +47,8 @@ migrate status
 ## 4. Use it
 
 ```python
-from synalchemy import SynAlchemy
+from synalchemy import db                       # the instance synalchemy.toml describes
 from app.models import User, Event
-
-db = SynAlchemy.from_config()
 
 async def main():
     async with db.session() as session:          # one session, routed per model

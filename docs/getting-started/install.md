@@ -10,7 +10,7 @@ pip install "synalchemy[postgres,sqlite]"     # several at once
 Until it's on PyPI, install a release from GitHub:
 
 ```bash
-pip install "synalchemy[postgres] @ https://github.com/ridoysheikh/synalchemy/releases/download/v0.1.0/synalchemy-0.1.0-py3-none-any.whl"
+pip install "synalchemy[postgres] @ https://github.com/ridoysheikh/synalchemy/releases/download/v0.2.0/synalchemy-0.2.0-py3-none-any.whl"
 ```
 
 | Extra | Installs | You write URLs like |

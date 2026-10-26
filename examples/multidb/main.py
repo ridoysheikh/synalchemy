@@ -3,9 +3,7 @@ import asyncio
 import sqlalchemy as sa
 from models import Event, User
 
-from synalchemy import SynAlchemy
-
-db = SynAlchemy.from_config()
+from synalchemy import db  # built from synalchemy.toml on first use
 
 
 async def main() -> None:

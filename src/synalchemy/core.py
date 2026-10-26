@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from synalchemy.config import DEFAULT_DB, Config, DatabaseConfig
 from synalchemy.engines import (
     build_async_engine,
+    build_migration_engine,
     build_sync_engine,
     ensure_database,
     is_memory_sqlite,
@@ -24,6 +26,15 @@ from synalchemy.session import RoutingSession
 
 if TYPE_CHECKING:
     from synalchemy.migrations.runner import Migrator
+
+
+def import_string(path: str) -> Any:
+    """``"package.module:attr.sub"`` -> the object."""
+    module_name, _, attr = path.partition(":")
+    obj: Any = importlib.import_module(module_name)
+    for part in filter(None, attr.split(".")):
+        obj = getattr(obj, part)
+    return obj
 
 
 class SynAlchemy:
@@ -56,6 +67,8 @@ class SynAlchemy:
             raise ConfigError("Pass either databases=... or config=..., not both.")
 
         self.config = config
+        if metadata is None and config.metadata:
+            metadata = import_string(config.metadata)
         self.metadata = metadata if metadata is not None else Model.metadata
         self._engines: dict[str, AsyncEngine] = {}
         self._sync_engines: dict[str, Engine] = {}
@@ -118,15 +131,16 @@ class SynAlchemy:
     def migration_engine(self, name: str = DEFAULT_DB) -> AsyncEngine:
         """Unpooled async engine for migrations, so they never hold app connections.
 
-        In-memory SQLite and ``pool = "static"`` share one connection by design, so the
-        app engine itself is returned for them.
+        It connects to ``migration_url`` when one is set (a direct endpoint, when the
+        app goes through a pooler). In-memory SQLite and ``pool = "static"`` share one
+        connection by design, so the app engine itself is returned for them.
         """
         db = self.config.database(name)
-        if db.pool == "static" or is_memory_sqlite(db.url):
+        if not db.migration_url and (db.pool == "static" or is_memory_sqlite(db.url)):
             return self.engine(name)
         engine = self._migration_engines.get(name)
         if engine is None:
-            engine = self._migration_engines[name] = build_async_engine(db, pool="null")
+            engine = self._migration_engines[name] = build_migration_engine(db)
         return engine
 
     def pool_status(self) -> dict[str, str]:
@@ -161,11 +175,14 @@ class SynAlchemy:
             engine.dispose()
 
     @asynccontextmanager
-    async def lifespan(self, _app: Any = None) -> AsyncIterator[SynAlchemy]:
-        """Connect on enter, dispose on exit. Works as a FastAPI/Starlette ``lifespan``."""
+    async def lifespan(self, _app: Any = None) -> AsyncIterator[None]:
+        """Connect on enter, dispose on exit. Works as a FastAPI/Starlette ``lifespan``.
+
+        It yields nothing: Starlette would take a yielded value as the app's state.
+        """
         await self.connect()
         try:
-            yield self
+            yield
         finally:
             await self.dispose()
 

@@ -41,7 +41,8 @@ create_if_missing = true
     assert config.database("default").url == "postgresql+asyncpg://u:p@h/main"
     assert config.database("default").engine_options == {"pool_size": 5}
     assert config.database("analytics").create_if_missing
-    assert config.database("analytics").url == "sqlite+aiosqlite:///an.db"
+    # relative to the config file
+    assert config.database("analytics").url == f"sqlite+aiosqlite:///{tmp_path.resolve()}/an.db"
     assert config.models == ["app.models"]
     assert config.root == tmp_path.resolve()
 

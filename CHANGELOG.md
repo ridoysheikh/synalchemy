@@ -2,6 +2,30 @@
 
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org); until 1.0, minor versions may contain breaking changes, and each entry says how to upgrade.
 
+## [0.2.0]
+
+From the first real-world app. Nothing to change when upgrading, except two behaviour fixes: `${VAR:-fallback}` now also falls back when `VAR` is set but empty, and a relative SQLite path in a config file is relative to that file, not the current folder.
+
+### Added
+
+- **`from synalchemy import db`**: the instance your config file describes, built on first use. Importing it reads nothing. The CLIs use the same instance; `db.use(instance)` swaps in your own, `db.reset()` forgets it.
+- **`env_file = ".env"`**: variables are read from that file too, so the app and the CLIs share settings without loading it themselves. The real environment wins.
+- **`pool = "external"`** for transaction poolers (PgBouncer, Supabase / Neon poolers, RDS Proxy): no app-side pool, and the driver's prepared-statement caches off (asyncpg, psycopg).
+- **`migration_url`** per database: migrations go to the direct endpoint while the app uses the pooler.
+- **Serverless detection**: `pool = "auto"` is unpooled on AWS Lambda, Vercel, Netlify, Google Cloud Functions and Azure Functions.
+- **Typed values from variables**: `pool_size = "${DB_POOL_SIZE:-5}"`, `echo = "${SQL_ECHO:-false}"` and the other pool options get their real type.
+
+### Fixed
+
+- `FastAPI(lifespan=db.lifespan)` failed at startup: `lifespan` yielded the instance, which Starlette took as the app's state. It yields nothing now.
+- A relative SQLite file (`sqlite:///./app.db`) is relative to the config file, like `migrations_dir`, so the app and the CLIs open the same file from any folder. Configs built in code are relative to the current folder, as before.
+
+### Changed
+
+- The config file is also looked for in parent folders, so commands work from a subfolder.
+- `${VAR:-fallback}` uses the fallback when `VAR` is empty, as the shell does. Empty `sync_url`, `migration_url` and `pool` mean "not set".
+- `metadata = "module:attr"` is honoured by `SynAlchemy.from_config()`, not only by the CLIs.
+
 ## [0.1.0]
 
 The first release.

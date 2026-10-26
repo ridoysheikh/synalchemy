@@ -2,6 +2,7 @@
 
 from synalchemy.config import DEFAULT_DB, Config, DatabaseConfig
 from synalchemy.core import SynAlchemy
+from synalchemy.default import DefaultSynAlchemy, db
 from synalchemy.exceptions import (
     ChainError,
     ConfigError,
@@ -11,7 +12,7 @@ from synalchemy.exceptions import (
 )
 from synalchemy.model import DB_NAME_KEY, DBNameMixin, Model, db_name_of
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "DB_NAME_KEY",
@@ -21,11 +22,13 @@ __all__ = [
     "ConfigError",
     "DBNameMixin",
     "DatabaseConfig",
+    "DefaultSynAlchemy",
     "MigrationError",
     "Model",
     "RoutingError",
     "SynAlchemy",
     "SynAlchemyError",
     "__version__",
+    "db",
     "db_name_of",
 ]

@@ -1,5 +1,19 @@
 # Python API
 
+## `db`
+
+```python
+from synalchemy import db
+```
+
+The instance your config file describes: `SynAlchemy.from_config()`, built the first time any attribute is used, so importing it is free. Everything below works on it (`db.session()`, `db.lifespan`, …). The CLIs use the same instance.
+
+| Member | Does |
+| --- | --- |
+| `db.instance` | the real `SynAlchemy` (built now if needed) |
+| `db.use(instance)` | make your own instance the default (tests, config built in code) |
+| `db.reset()` | forget it; the next use reads the config again |
+
 ## `SynAlchemy`
 
 ```python
@@ -16,14 +30,14 @@ db = SynAlchemy(config=Config(...), metadata=Base.metadata)
 | `db.config` | the loaded `Config` |
 | `db.engine(name="default")` | async engine, created on first use |
 | `db.sync_engine(name="default")` | sync engine |
-| `db.migration_engine(name="default")` | unpooled async engine used by migrations |
+| `db.migration_engine(name="default")` | unpooled async engine used by migrations, on `migration_url` when set |
 | `db.session(**kw)` | routing `AsyncSession` (`async with`) |
 | `db.sync_session(**kw)` | routing `Session` (`with`) |
 | `db.sessionmaker`, `db.sync_sessionmaker` | the underlying factories |
 | `db.get_session()` | async generator for dependency injection |
 | `await db.connect(*names)` | create missing databases, check each connects |
 | `await db.dispose()` / `db.dispose_sync()` | close all pools / only sync pools |
-| `db.lifespan(app=None)` | async context manager: connect, then dispose |
+| `db.lifespan(app=None)` | async context manager: connect, then dispose (yields nothing, as Starlette's `lifespan` expects) |
 | `db.pool_status()` | `{name: status}` for every live pool |
 | `db.metadata_for(name)` | a `MetaData` copy with only that database's tables |
 | `await db.create_all(*names)` / `drop_all` | create or drop tables directly (tests) |

@@ -43,6 +43,8 @@ For SQL with no table, such as `text(...)`, choose the database explicitly:
 await session.execute(text("SELECT 1"), bind_arguments={"db_name": "analytics"})
 ```
 
+`db` here is `from synalchemy import db`, or an instance you built yourself.
+
 **For dependency injection** (FastAPI): `Depends(db.get_session)` yields a session per request.
 
 Queries, loading and relationships work as usual: see [the ORM querying guide](https://docs.sqlalchemy.org/en/20/orm/queryguide/).
