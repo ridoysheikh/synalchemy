@@ -94,6 +94,63 @@ def test_fingerprint_is_stable(app: SynAlchemy, tmp_path: Path) -> None:
     assert json.loads(path.read_text())["tables"][0]["name"] == "events"
 
 
+def crowded_metadata() -> sa.MetaData:
+    """A table whose constraints and indexes are unnamed: only their columns tell them apart."""
+
+    class Base(DBNameMixin, DeclarativeBase):
+        pass
+
+    class Store(Base):
+        __tablename__ = "stores"
+        id: Mapped[int] = mapped_column(primary_key=True)
+
+    class Variant(Base):
+        __tablename__ = "variants"
+        id: Mapped[int] = mapped_column(primary_key=True)
+
+    class User(Base):
+        __tablename__ = "users"
+        id: Mapped[int] = mapped_column(primary_key=True)
+
+    class Batch(Base):
+        __tablename__ = "batches"
+        __table_args__ = (
+            sa.UniqueConstraint("a", "b"),
+            sa.UniqueConstraint("c", "d"),
+            sa.UniqueConstraint("a", "d"),
+            sa.Index(None, "a", "c"),
+            sa.Index(None, "b", "d"),
+            sa.Index(None, "d"),
+        )
+        id: Mapped[int] = mapped_column(primary_key=True)
+        store_id: Mapped[int] = mapped_column(sa.ForeignKey("stores.id"))
+        variant_id: Mapped[int] = mapped_column(sa.ForeignKey("variants.id"))
+        user_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"))
+        owner_id: Mapped[int] = mapped_column(sa.ForeignKey("users.id"))
+        a: Mapped[int]
+        b: Mapped[int]
+        c: Mapped[int]
+        d: Mapped[int]
+
+    return Base.metadata
+
+
+def test_unnamed_constraints_come_out_in_one_order(tmp_path: Path) -> None:
+    """Foreign keys, unique constraints and indexes without a name used to tie in the sort, and a
+    set decided their order: the same models exported twice gave two fingerprints."""
+    config = Config(databases={"default": "sqlite:///a.db"}, root=tmp_path)
+    seen = set()
+    for _ in range(40):
+        doc = schema.build(SynAlchemy(config=config, metadata=crowded_metadata()), "default")
+        seen.add(doc["fingerprint"])
+    assert len(seen) == 1
+    table = next(t for t in doc["tables"] if t["name"] == "batches")
+    foreign = [f["columns"] for f in table["foreign_keys"]]
+    assert foreign == [["owner_id"], ["store_id"], ["user_id"], ["variant_id"]]
+    assert [u["columns"] for u in table["unique"]] == [["a", "b"], ["a", "d"], ["c", "d"]]
+    assert [i["columns"] for i in table["indexes"]] == [["a", "c"], ["b", "d"], ["d"]]
+
+
 def test_schema_config(tmp_path: Path) -> None:
     config = Config.from_mapping(
         {"databases": {"default": "sqlite://"}, "schema": {"export": "yes", "dir": "out"}},

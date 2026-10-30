@@ -2,6 +2,14 @@
 
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org); until 1.0, minor versions may contain breaking changes, and each entry says how to upgrade.
 
+## [0.3.2]
+
+Nothing to change when upgrading. The first `migrations export` after upgrading may reorder lines in your `schema/<db>.json` once; after that the files stay the same until the schema changes.
+
+### Fixed
+
+- `schema/<db>.json` and its `fingerprint` changed from one run to the next for the same models. A table's unnamed foreign keys, unique constraints and indexes tied in the sort and a set decided their order. They are now ordered by their columns (and, for a foreign key, what it points at; for a check, its SQL), so the same schema always writes the same file.
+
 ## [0.3.1]
 
 Nothing to change when upgrading. If a `migrations make` crashed on a column type from another package, run it again.

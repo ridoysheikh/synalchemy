@@ -125,7 +125,7 @@ def _table(table: sa.Table, dialect: Dialect) -> dict[str, Any]:
         "indexes": [],
         "checks": [],
     }
-    constraints = sorted(table.constraints, key=lambda c: (type(c).__name__, name_of(c) or ""))
+    constraints = sorted(table.constraints, key=lambda c: _constraint_key(c, name_of, dialect))
     for constraint in constraints:
         if isinstance(constraint, sa.ForeignKeyConstraint):
             target = constraint.elements[0].column.table
@@ -150,7 +150,7 @@ def _table(table: sa.Table, dialect: Dialect) -> dict[str, Any]:
             out["checks"].append(
                 {"name": name_of(constraint), "sql": _sql(constraint.sqltext, dialect)}
             )
-    for index in sorted(table.indexes, key=lambda i: name_of(i) or ""):
+    for index in sorted(table.indexes, key=lambda i: _index_key(i, name_of, dialect)):
         out["indexes"].append(
             {
                 "name": name_of(index),
@@ -253,6 +253,37 @@ def _sql(element: Any, dialect: Dialect) -> str:
         return str(element.compile(dialect=dialect, compile_kwargs={"literal_binds": True}))
     except (CompileError, UnsupportedCompilationError):
         return str(element)
+
+
+def _constraint_key(
+    constraint: sa.Constraint, name_of: Any, dialect: Dialect
+) -> tuple[str, str, tuple[str, ...], tuple[str, ...]]:
+    """Where a constraint sorts: its kind, its name, then what it is made of.
+
+    `table.constraints` is a set, and most constraints have no name, so a key of kind and name
+    alone ties and the set's iteration order decides: the same models gave a different file (and
+    fingerprint) on each run. Columns, and for a foreign key what it points at, or a check's SQL,
+    put every constraint in the same place every time.
+    """
+    columns = tuple(c.name for c in getattr(constraint, "columns", ()))
+    if isinstance(constraint, sa.ForeignKeyConstraint):
+        made_of = tuple(f"{e.column.table.name}.{e.column.name}" for e in constraint.elements)
+    elif isinstance(constraint, sa.CheckConstraint):
+        made_of = (_sql(constraint.sqltext, dialect),)
+    else:
+        made_of = ()
+    return (type(constraint).__name__, name_of(constraint) or "", columns, made_of)
+
+
+def _index_key(
+    index: sa.Index, name_of: Any, dialect: Dialect
+) -> tuple[str, tuple[str, ...], bool]:
+    """Where an index sorts: its name, then its columns or expressions (an unnamed one has no
+    other way to be told apart)."""
+    parts = tuple(
+        c.name if isinstance(c, sa.Column) else _sql(c, dialect) for c in index.expressions
+    )
+    return (name_of(index) or "", parts, bool(index.unique))
 
 
 def _namer(dialect: Dialect) -> Any:
