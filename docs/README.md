@@ -36,6 +36,7 @@ Each page answers one question and stays short. Find what you want to do below a
 | fix "has several children" after a git merge | [Migrations › Branches](guides/migrations.md#branches-after-a-git-merge) |
 | add, remove or rename ENUM values | [ENUMs](guides/enums.md) |
 | know what differs between PostgreSQL, MySQL, SQLite… | [Dialects](guides/dialects.md) |
+| let services in Go, JavaScript… use the same databases without a mismatch | [Sharing the schema](guides/schema-export.md) |
 
 ### Look something up
 

@@ -32,6 +32,10 @@ Both also run as `synalchemy migrations …`, `synalchemy migrate …` and `pyth
 | `  --offline` | check the chains only, without connecting |
 | `migrations rechain` | re-links unapplied revisions in timestamp order |
 | `  --dry-run` | show the changes only |
+| `migrations export` | writes `<db>.json` [schema files](../guides/schema-export.md) from the models and head revision (offline) |
+| `  --out DIR`, `-o` | write there instead of `[schema] dir` |
+
+With `[schema] export = true`, `make` and `rechain` also rewrite the schema files.
 
 ## migrate
 
@@ -54,4 +58,5 @@ migrate down --db analytics                 # analytics back by one
 migrate to base --db default                # empty default's schema
 migrate up --sql --db billing > billing.sql
 migrations check                            # in CI
+migrations export                           # rebuild schema/<db>.json
 ```

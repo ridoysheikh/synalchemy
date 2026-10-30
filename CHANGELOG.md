@@ -2,6 +2,14 @@
 
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org); until 1.0, minor versions may contain breaking changes, and each entry says how to upgrade.
 
+## [0.3.0]
+
+Nothing to change when upgrading: schema export is off until you set `[schema] export = true`.
+
+### Added
+
+- **Schema export for other services.** With `[schema] export = true`, `migrations make` (and `rechain`) writes `schema/<db>.json`: every table, column, key, index and ENUM, stamped with the head revision and a fingerprint. Services in other languages build their models from it and compare the stamp with the database's version table to catch a mismatch. `migrations export` rebuilds the files on demand, offline. See [Sharing the schema](docs/guides/schema-export.md).
+
 ## [0.2.0]
 
 From the first real-world app. Nothing to change when upgrading, except two behaviour fixes: `${VAR:-fallback}` now also falls back when `VAR` is set but empty, and a relative SQLite path in a config file is relative to that file, not the current folder.

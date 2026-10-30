@@ -58,6 +58,16 @@ await m.make_revision("msg", empty=False, use_async=False)   # Path, or None if 
 m.sql(from_ref=None, to_ref="head")                          # offline SQL text
 ```
 
+## Schema export (`synalchemy.schema`)
+
+[Sharing the schema](../guides/schema-export.md) describes the JSON.
+
+```python
+from synalchemy import schema
+schema.build(db, "default")              # the JSON as a dict
+schema.export(db, names=None, directory=None)   # write <name>.json files; returns their paths
+```
+
 ## Models
 
 | Name | Use |

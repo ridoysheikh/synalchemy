@@ -76,3 +76,5 @@ migrations check        # CI: exits 1 if a chain is broken, or models changed wi
 migrate up --sql        # print SQL for review instead of running it
 migrate                 # deploy
 ```
+
+If other services use these databases, set `[schema] export = true` so each revision comes with an up-to-date JSON description of the schema. See [Sharing the schema](schema-export.md).

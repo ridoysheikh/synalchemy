@@ -12,7 +12,7 @@ from synalchemy.exceptions import (
 )
 from synalchemy.model import DB_NAME_KEY, DBNameMixin, Model, db_name_of
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "DB_NAME_KEY",

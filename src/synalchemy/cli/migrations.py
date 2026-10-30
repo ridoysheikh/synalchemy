@@ -7,6 +7,7 @@ from typing import Annotated
 
 import typer
 
+from synalchemy import schema
 from synalchemy.cli._common import (
     ConfigOption,
     DbOption,
@@ -17,6 +18,7 @@ from synalchemy.cli._common import (
     short,
 )
 from synalchemy.config import Config, find_config_file
+from synalchemy.core import SynAlchemy
 from synalchemy.exceptions import ChainError, ConfigError
 
 migrations_app = typer.Typer(
@@ -41,7 +43,18 @@ url = "${DATABASE_URL:-sqlite+aiosqlite:///./app.db}"
 # [databases.analytics]          # models with __db_name__ = "analytics" go here
 # url = "${ANALYTICS_DATABASE_URL}"
 # create_if_missing = true
+
+# [schema]                       # JSON schema for services that share the databases
+# export = true                  # rewrite schema/<db>.json on `migrations make`
+# dir = "schema"
 """
+
+
+def _export_schema(app: SynAlchemy, names: list[str]) -> None:
+    """Rewrite the schema JSON of ``names`` when ``[schema] export`` is on."""
+    if app.config.schema.export:
+        for path in schema.export(app, names):
+            typer.echo(f"schema: wrote {path}")
 
 
 @migrations_app.command()
@@ -92,6 +105,25 @@ def make(
             typer.echo(f"{name}: no changes")
         else:
             typer.secho(f"{name}: created {path}", fg=typer.colors.GREEN)
+    _export_schema(app, names)
+
+
+@migrations_app.command("export")
+@handle_errors
+def export_schema(
+    db: DbOption = None,
+    out: Annotated[
+        Path | None, typer.Option("--out", "-o", help="Folder to write to. Default: [schema] dir.")
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Write schema/<db>.json from the models and head revision (works offline).
+
+    Runs whether or not `[schema] export` is on, to rebuild lost or stale files.
+    """
+    app = load_app(config)
+    for path in schema.export(app, select_databases(app, db), out):
+        typer.echo(f"wrote {path}")
 
 
 @migrations_app.command()
@@ -182,9 +214,13 @@ def rechain(
             out.append((name, migrator.chain.rechain(applied, dry_run=dry_run)))
         return out
 
+    relinked = []
     for name, changes in run(app, go()):
         if not changes:
             typer.echo(f"{name}: chain already linear")
+        elif not dry_run:
+            relinked.append(name)
         for rev, old, new in changes:
             verb = "would re-link" if dry_run else "re-linked"
             typer.echo(f"{name}: {verb} {rev.id}: {short(old)} -> {short(new)}")  # type: ignore[attr-defined]
+    _export_schema(app, relinked)  # the head may have changed

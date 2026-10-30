@@ -56,12 +56,20 @@ _CONFIG_KEYS = {
     "version_table",
     "exclude_tables",
     "engine_defaults",
+    "schema",
 }
 
 
 # Engine options that environment variables can set; their text is converted to the type.
 _INT_OPTIONS = {"pool_size", "max_overflow", "pool_timeout", "pool_recycle"}
-_BOOL_OPTIONS = {"echo", "echo_pool", "pool_pre_ping", "pool_use_lifo", "create_if_missing"}
+_BOOL_OPTIONS = {
+    "echo",
+    "echo_pool",
+    "pool_pre_ping",
+    "pool_use_lifo",
+    "create_if_missing",
+    "export",
+}
 _TRUE, _FALSE = {"1", "true", "yes", "on"}, {"0", "false", "no", "off", ""}
 
 
@@ -165,6 +173,35 @@ class DatabaseConfig:
 
 
 @dataclass
+class SchemaConfig:
+    """``[schema]``: the JSON schema files other services read."""
+
+    export: bool = False
+    dir: Path = Path("schema")
+    root: Path = field(default_factory=Path.cwd, repr=False)
+
+    def __post_init__(self) -> None:
+        self.export = _coerce("export", self.export, "schema")
+        self.dir = Path(self.dir)
+
+    @property
+    def path(self) -> Path:
+        return self.dir if self.dir.is_absolute() else self.root / self.dir
+
+    @classmethod
+    def parse(cls, value: Any, root: Path) -> SchemaConfig:
+        if isinstance(value, SchemaConfig):
+            value.root = root
+            return value
+        if not isinstance(value, Mapping):
+            raise ConfigError("'schema' must be a table: export = true, dir = \"schema\".")
+        unknown = set(value) - {"export", "dir"}
+        if unknown:
+            raise ConfigError(f"Unknown [schema] key(s): {', '.join(sorted(unknown))}.")
+        return cls(**value, root=root)
+
+
+@dataclass
 class Config:
     """Full SynAlchemy configuration."""
 
@@ -177,6 +214,7 @@ class Config:
     version_table: str = "synalchemy_version"
     exclude_tables: list[str] = field(default_factory=list)
     engine_defaults: dict[str, Any] = field(default_factory=dict)
+    schema: SchemaConfig = field(default_factory=SchemaConfig)
     root: Path = field(default_factory=Path.cwd)
 
     def __post_init__(self) -> None:
@@ -200,6 +238,7 @@ class Config:
                 db.pool = default_pool
         self.migrations_dir = Path(self.migrations_dir)
         self.root = Path(self.root)
+        self.schema = SchemaConfig.parse(self.schema, self.root)
         # A relative SQLite file is relative to the config file, like `migrations_dir`,
         # so the app and the CLIs find it from any folder.
         for db in self.databases.values():

@@ -81,6 +81,14 @@ A database can also be a single string: `analytics = "sqlite:///a.db"`.
 | `version_table` | `synalchemy_version` | stores the current revision, in each database |
 | `exclude_tables` | `[]` | glob patterns of tables migrations ignore |
 | `engine_defaults` | `{}` | engine options and `pool` for every database |
+| `schema` | – | the [schema export](schema-export.md) table (below) |
+
+**`[schema]`**
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `export` | `false` | rewrite the schema JSON files on `migrations make` and `rechain` |
+| `dir` | `schema` | where `<db>.json` files go |
 
 **Per database**
 
