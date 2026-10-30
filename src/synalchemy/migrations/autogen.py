@@ -34,6 +34,15 @@ def table_filter(config: Config) -> Callable[[str], bool]:
     return is_managed
 
 
+def _render_item(type_: str, obj: Any, autogen_context: AutogenContext) -> str | bool:
+    """Import the module of third-party column types (e.g. pgvector), then render as usual."""
+    if type_ == "type":
+        module = type(obj).__module__
+        if module.split(".")[0] != "sqlalchemy":
+            autogen_context.imports.add(f"import {module}")
+    return render_item(type_, obj, autogen_context)
+
+
 def render_diff(
     conn: Connection, db: SynAlchemy, name: str, use_async: bool = False
 ) -> tuple[str, str, str] | None:
@@ -53,9 +62,10 @@ def render_diff(
             "include_object": include_object,
             "compare_type": compare_enum_type,
             "render_as_batch": conn.dialect.name == "sqlite" and not use_async,
-            "render_item": render_item,
+            "render_item": _render_item,
             "alembic_module_prefix": "aop." if use_async else "op.",
             "sqlalchemy_module_prefix": "sa.",
+            "user_module_prefix": None,
         },
     )
     upgrade_ops = produce_migrations(context, metadata).upgrade_ops

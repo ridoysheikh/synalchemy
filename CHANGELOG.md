@@ -2,6 +2,14 @@
 
 All notable changes are listed here. Versions follow [semantic versioning](https://semver.org); until 1.0, minor versions may contain breaking changes, and each entry says how to upgrade.
 
+## [0.3.1]
+
+Nothing to change when upgrading. If a `migrations make` crashed on a column type from another package, run it again.
+
+### Fixed
+
+- `migrations make` crashed with `KeyError: 'user_module_prefix'` when a change involved a column type that isn't plain SQLAlchemy, such as pgvector's `Vector`. The revision now renders such types with their full module path and imports that module, so it also runs.
+
 ## [0.3.0]
 
 Nothing to change when upgrading: schema export is off until you set `[schema] export = true`.

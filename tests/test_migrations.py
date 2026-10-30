@@ -212,3 +212,37 @@ async def test_offline_sql(make_db) -> None:
     assert "CREATE TABLE IF NOT EXISTS synalchemy_version" in sql
     assert "CREATE TABLE users" in sql
     assert "INSERT INTO synalchemy_version" in sql
+
+
+class Vector(sa.types.UserDefinedType):
+    """Stand-in for a third-party column type such as pgvector's ``Vector``."""
+
+    cache_ok = True
+
+    def __init__(self, dim: int) -> None:
+        self.dim = dim
+
+    def get_col_spec(self, **kw) -> str:
+        return f"VECTOR({self.dim})"
+
+
+async def test_revision_with_third_party_column_type(make_db) -> None:
+    metadata = sa.MetaData()
+    sa.Table("docs", metadata, sa.Column("id", sa.Integer, primary_key=True))
+    sa.Table(
+        "chunks",
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("embedding", Vector(3)),
+    )
+    db = make_db(metadata)
+    try:
+        path = await db.migrator("default").make_revision("vectors")
+        assert path is not None
+        text = path.read_text()
+        assert "Vector(" in text
+        assert f"import {__name__}" in text
+        await db.migrator("default").upgrade()
+        assert "embedding" in await column_names(db, "default", "chunks")
+    finally:
+        await db.dispose()
